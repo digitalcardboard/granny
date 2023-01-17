@@ -10,6 +10,8 @@ import tensorflow as tf
 import pandas as pd
 import numpy as np
 import os
+import glob
+import time
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 pd.options.mode.chained_assignment = None
 tf.autograph.set_verbosity(3)
@@ -60,12 +62,12 @@ class GRANNY(object):
         # location where segmented/individual apples will be saved
         self.SEGMENTED_DIR = "results" + os.sep + "segmented_images" + os.sep
         # location where apples with the scald removed will be saved
-        self.BINARIZED_IMAGE = "results" + os.sep + "binarized_images" + os.sep
+        self.BINARIZED_IMAGE_DIR = "results" + os.sep + "binarized_images" + os.sep
 
         if (self.VERBOSE):
             print(f"FULLMASK_DIR: {self.FULLMASK_DIR}")
             print(f"SEGMENTED_DIR: {self.SEGMENTED_DIR}")
-            print(f"BINARIZED_IMAGE: {self.BINARIZED_IMAGE}")
+            print(f"BINARIZED_IMAGE_DIR: {self.BINARIZED_IMAGE_DIR}")
             print("-" * 40)
 
     def setParameters(self, action, fname, mode):
@@ -358,14 +360,10 @@ class GRANNY(object):
                 Returns: 
                         None
         """
-        if (self.VERBOSE):
-            print(f"Found {len(df_list)} groups of apple(s).")
         # loop over 18 apples/pears
         for df in df_list:
             # loop over the coordinates
             for i in range(0, len(df)):
-                if (self.VERBOSE):
-                    print(f"Found {len(df)} apple(s) in this group.")
 
                 # convert to np.array
                 ar = np.array(df)
@@ -400,6 +398,8 @@ class GRANNY(object):
                 Returns: 
                 (numpy.array) new_img: RGB, individual apple image with no purple regions 
         """
+        if (self.VERBOSE): print("Removing purple...")
+
         # convert RGB to YCrCb
         new_img = img
         ycc_img = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
@@ -465,6 +465,8 @@ class GRANNY(object):
                         (numpy.array) new_img: RGB, individual apple image with the scald region removed
                         (numpy.array) th123: binary mask 
         """
+        if (self.VERBOSE): print("Removing scald regions...")
+
         # convert from RGB to Lab color space
         new_img = img
         lab_img = cv2.cvtColor(img, cv2.COLOR_RGB2Lab).astype(np.float32)
@@ -521,6 +523,7 @@ class GRANNY(object):
                         (numpy.array) img: RGB, no scald image 
                         (numpy.array) bw: binary mask (zeros & ones array)
         """
+        if (self.VERBOSE): print("Resizing...")
         # Resize image to 800x800
         img = cv2.resize(img, (800, 800), interpolation=cv2.INTER_CUBIC)
         old_img = img
@@ -529,6 +532,7 @@ class GRANNY(object):
         img = self.remove_purple(img)
         nopurple_img = img
 
+        if (self.VERBOSE): print("Smoothing...")
         # Image smoothing
         img = cv2.GaussianBlur(img, (3, 3), sigmaX=0, sigmaY=0)
 
@@ -571,6 +575,8 @@ class GRANNY(object):
                 Returns: 
                         (float) fraction: the scald region, i.e. fraction of the original image that was removed
         """
+        if (self.VERBOSE): print("Calculating scald percentage...")
+
         # convert to uint8
         img = np.uint8(img)
 
@@ -589,7 +595,7 @@ class GRANNY(object):
 
         if fraction < 0:
             return 0
-        return fraction
+        return round(fraction,6)
 
     def rate_binarize_image(self):
         """ 
@@ -602,11 +608,13 @@ class GRANNY(object):
                 Returns: 
                         None
         """
+
         # create "results" directory to save the results
-        self.check_path(self.BINARIZED_IMAGE)
+        self.check_path(self.BINARIZED_IMAGE_DIR)
 
         # single-image rating
         if self.MODE == 1:
+            if (self.VERBOSE): print("Single-Image Rating")
             try:
                 # read the image from file
                 file_name = self.FILE_NAME
@@ -617,34 +625,46 @@ class GRANNY(object):
 
                 # calculate the scald region and save image
                 score = self.calculate_scald(binarized_image, nopurple_img)
-                idx = -file_name[::-1].find(os.sep)
-                if idx != 1:
-                    file_name = file_name[idx:]
+
+                base_file = os.path.split(file_name)[1]
+
                 skimage.io.imsave(os.path.join(
-                    self.BINARIZED_IMAGE, file_name), binarized_image)
+                    self.BINARIZED_IMAGE_DIR, base_file), binarized_image)
 
                 # save the scores to results/rating.txt
                 with open("results" + os.sep + "rating.txt", "w") as w:
-                    w.writelines(f"{self.clean_name(file_name)}:\t\t{score}")
+                    w.writelines(f"{self.clean_name(base_file)}:\t\t{score}")
                     w.writelines("\n")
                 print(f"\t- Done. Check \"results/\" for output. - \n")
             except FileNotFoundError:
                 print(f"\t- Folder/File does not exist. -")
 
-        # multi-images rating
+        # multi-image rating
         elif self.MODE == 2:
+            if (self.VERBOSE): print("Multi-Image Rating")
             try:
+
                 # list all files and folders in the folder
                 folders, files = self.list_all(self.FOLDER_NAME)
+                if (self.VERBOSE):
+                    print("-" * 40)
+                    print(f"folders: {folders}")
+                    print(f"files: {files}")
 
                 # create "results" directory to save the results
                 for folder in folders:
-                    self.check_path(folder.replace(
-                        self.FOLDER_NAME, self.BINARIZED_IMAGE))
+                    base_folder = os.path.split(folder)[0]
+                    if (self.VERBOSE):
+                        print(f"folder: {folder}")
+                        print(f"base_folder: {base_folder}")
+                    self.check_path(os.path.join(base_folder, self.BINARIZED_IMAGE_DIR))
+
+                #files = glob.glob(self.FOLDER_NAME + os.sep + "*")
 
                 # remove scald and rate each apple
                 scores = []
                 for file_name in files:
+                    if (self.VERBOSE): print(f"Processing {file_name}...")
 
                     # read the image from file
                     img = skimage.io.imread(file_name)
@@ -659,8 +679,12 @@ class GRANNY(object):
                     if idx != 1:
                         file_name = file_name[idx:]
                     scores.append(score)
-                    skimage.io.imsave(os.path.join(
-                        self.BINARIZED_IMAGE, file_name + ".png"), binarized_image)
+
+                    binarized_fname = os.path.join(
+                        self.BINARIZED_IMAGE_DIR, file_name + ".png")
+                    if (self.VERBOSE): print(f"Saving to {binarized_fname}...")
+                    skimage.io.imsave(binarized_fname, binarized_image)
+                    if (self.VERBOSE): print(f"Done!")
 
                 # save the scores to results/rating.txt
                 with open("results" + os.sep + "ratings.txt", "w") as w:
@@ -741,8 +765,7 @@ class GRANNY(object):
                         df_list=df_list,
                         mask=mask,
                         im=img,
-                        fname=file_name.replace(
-                            self.OLD_DATA_DIR, self.SEGMENTED_DIR)
+                        fname=os.path.join(base_dir, self.SEGMENTED_DIR, file_name_no_ext)
                     )
 
                 # for debugging purpose
@@ -759,6 +782,8 @@ class GRANNY(object):
         """
                 Perform action corresponding to self.ACTION
         """
+        start_time = time.perf_counter()
+        
         # extract each individual instance from the full-tray image
         if self.ACTION == "extract":
             if (self.VERBOSE):
@@ -774,3 +799,6 @@ class GRANNY(object):
         # not a valid action
         else:
             print("\t- Invalid action. Specify either \"extract\" or \"rate\" -")
+
+        end_time = time.perf_counter()
+        print(f"GRANNY took {end_time - start_time:0.4f} seconds")
