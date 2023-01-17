@@ -1,7 +1,7 @@
 import os 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 import argparse
-from . import GRANNY as granny
+import GRANNY as granny
 
 def main():
     gn = granny.GRANNY()
@@ -21,16 +21,9 @@ def main():
     default = gn.VERBOSE, required = False, help = "Optional. Specify 0 to switch off model display.")
     
     args = parser.parse_args()
-    
     gn.setParameters(args.action, args.path, args.mode)
-
     gn.setVerbosity(args.verbose)
-
     gn.main()
 
-def launch_gui(): 
-    
-    gn = granny.GRANNY()
-
-    gn.launch_gui()
-
+if __name__ == "__main__":
+    main()

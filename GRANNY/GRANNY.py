@@ -2,7 +2,7 @@ from tkinter import *
 import cv2
 import matplotlib.pyplot as plt
 import re
-from . import GRANNY_config as config
+import GRANNY_config as config
 import skimage
 import shutil
 import pathlib
@@ -32,11 +32,20 @@ class GRANNY(object):
             self.ROOT_DIR, "mask_rcnn_balloon.h5")
 
         # initialize parameters
-        self.VERBOSE = 0
+        self.VERBOSE = 1    # defaulting to verbose
         self.FILE_NAME = ""
         self.FOLDER_NAME = ""
         self.OLD_DATA_DIR = ""
         self.ACTION = ""
+
+        if (self.VERBOSE):
+            print("-" * 40)
+            print("Init Params")
+            print("-----------")
+            print(f"ROOT_DIR: {self.ROOT_DIR}")
+            print(f"MODEL_DIR: {self.MODEL_DIR}")
+            print(f"NEW_DATA_DIR: {self.NEW_DATA_DIR}")
+            print(f"PRETRAINED_MODEL: {self.PRETRAINED_MODEL}")
 
         # accepted file extensions
         self.FILE_EXTENSION = (
@@ -48,12 +57,16 @@ class GRANNY(object):
 
         # location where masked apple trays will be saved
         self.FULLMASK_DIR = "results" + os.sep + "full_masked_images" + os.sep
-
         # location where segmented/individual apples will be saved
         self.SEGMENTED_DIR = "results" + os.sep + "segmented_images" + os.sep
-
         # location where apples with the scald removed will be saved
         self.BINARIZED_IMAGE = "results" + os.sep + "binarized_images" + os.sep
+
+        if (self.VERBOSE):
+            print(f"FULLMASK_DIR: {self.FULLMASK_DIR}")
+            print(f"SEGMENTED_DIR: {self.SEGMENTED_DIR}")
+            print(f"BINARIZED_IMAGE: {self.BINARIZED_IMAGE}")
+            print("-" * 40)
 
     def setParameters(self, action, fname, mode):
         """
@@ -83,6 +96,15 @@ class GRANNY(object):
         else:
             self.MODE = mode
 
+        if (self.VERBOSE):
+            print(f"ACTION: {self.ACTION}")
+            print(f"OLD_DATA_DIR: {self.OLD_DATA_DIR}")
+            print(f"FILE_NAME: {self.FILE_NAME}")
+            print(f"FOLDER_NAME: {self.FOLDER_NAME}")
+            print(f"MODE: {self.MODE}")
+            print("-" * 40)
+
+
     def setVerbosity(self, verbose):
         """ 
                 Setter method for configuration verbosity
@@ -110,8 +132,12 @@ class GRANNY(object):
             if reset:
                 shutil.rmtree(dir)
                 os.makedirs(dir)
+            if (self.VERBOSE):
+                print(f"{dir} already exists. ")
         else:
             os.makedirs(dir)
+            if (self.VERBOSE):
+                print(f"Creating {dir} folder.")
 
     def list_all(self, data_dir=os.path.curdir):
         """ 
@@ -159,8 +185,9 @@ class GRANNY(object):
                 Returns: 
                         (str) fname: file names without file extensions
         """
-        for ext in self.FILE_EXTENSION:
-            fname = re.sub(ext, "", fname)
+        #for ext in self.FILE_EXTENSION:
+        #    fname = re.sub(ext, "", fname)
+        fname = os.path.splitext(os.path.split(fname)[1])[0]
         return fname
 
     def load_model(self, verbose=1):
@@ -204,6 +231,8 @@ class GRANNY(object):
                         (numpy.array) mask: [height, width, num_instances]
                         (numpy.array) box: [num_instance, (y1, x1, y2, x2, class_id)]
         """
+        if (self.VERBOSE): print("Identifying individual apples...")
+
         # detect image's instances using the model
         results = model.detect([im], verbose=0)
         r = results[0]
@@ -219,7 +248,12 @@ class GRANNY(object):
                                                  class_names, score)
 
         # save the figure
-        plt.savefig(os.path.join(fname + ".png"), bbox_inches='tight')
+        fullmask_fname = os.path.join(fname + ".png")
+        if (self.VERBOSE):
+            print(f"Saving Full Mask Image to {fullmask_fname}")
+        plt.savefig(fullmask_fname, bbox_inches='tight')
+
+        if (self.VERBOSE): print("Done!")
 
         return mask, box
 
@@ -324,11 +358,14 @@ class GRANNY(object):
                 Returns: 
                         None
         """
+        if (self.VERBOSE):
+            print(f"Found {len(df_list)} groups of apple(s).")
         # loop over 18 apples/pears
         for df in df_list:
-
             # loop over the coordinates
             for i in range(0, len(df)):
+                if (self.VERBOSE):
+                    print(f"Found {len(df)} apple(s) in this group.")
 
                 # convert to np.array
                 ar = np.array(df)
@@ -346,7 +383,10 @@ class GRANNY(object):
                                          [3], j]*m[ar[i][0]:ar[i][2], ar[i][1]:ar[i][3]]
 
                 # save the image
-                plt.imsave(fname + "_" + str(ar[i][-2]) + ".png", new_im)
+                export_fname = fname + "_" + str(ar[i][-2]) + ".png"
+                if (self.VERBOSE):
+                    print(f"Extracted {export_fname}")
+                plt.imsave(export_fname, new_im)
 
     def remove_purple(self, img):
         """
@@ -508,9 +548,15 @@ class GRANNY(object):
                 Returns: 
                         (numpy.array) img: rotated image
         """
+        if (self.VERBOSE):
+                print(f"old_im_dir: {old_im_dir}")
+                print(f"new_im_dir: {new_im_dir}")
         img = skimage.io.imread(old_im_dir)
         if img.shape[0] > img.shape[1]:
             img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+            if (self.VERBOSE): print("Rotating image.")
+        else:
+            if (self.VERBOSE): print("Leaving image unrotated.")
         skimage.io.imsave(new_im_dir, img)
         return img
 
@@ -648,44 +694,44 @@ class GRANNY(object):
 
             # list all folders and files
             data_dirs, file_names = self.list_all(self.OLD_DATA_DIR)
+            if (self.VERBOSE):
+                print("-" * 40)
+                print(f"data_dirs: {data_dirs}")
+                print(f"file_names: {file_names}")
+
 
             # check and create a new "results" directory to store the results
             for data_dir in data_dirs:
-                self.check_path(data_dir.replace(
-                    self.OLD_DATA_DIR, self.FULLMASK_DIR))
-                self.check_path(data_dir.replace(
-                    self.OLD_DATA_DIR, self.SEGMENTED_DIR))
-                self.check_path(data_dir.replace(
-                    self.OLD_DATA_DIR, self.NEW_DATA_DIR))
+                base_dir = os.path.split(data_dir)[0]
+                if (self.VERBOSE):
+                    print(f"data_dir: {data_dir}")
+                    print(f"base_dir: {base_dir}")
+                self.check_path(os.path.join(base_dir, self.FULLMASK_DIR));
+                self.check_path(os.path.join(base_dir, self.SEGMENTED_DIR));
+                self.check_path(os.path.join(base_dir, self.NEW_DATA_DIR));
 
             # pass each image to the model
             for file_name in file_names:
-                # get just file name, i.e. remove relative path
-                idx = -file_name[::-1].find(os.sep)
-                if idx != 1:
-                    name = file_name[idx:]
-                else:
-                    name = file_name
-
-                # print, for debugging purpose
-                print(f"\t- Passing {name} into Mask R-CNN model. -")
+                base_file = os.path.split(file_name)[1]
+                if (self.VERBOSE):
+                    print(f"file_name: {file_name}")
+                    print(f"base_file: {base_file}")
+                    print(f"\t- Passing {base_file} into Mask R-CNN model. -")
 
                 # check and rotate the image to landscape (4000x6000)
                 img = self.rotate_image(
-                    old_im_dir=file_name,
-                    new_im_dir=file_name.replace(
-                        self.OLD_DATA_DIR, self.NEW_DATA_DIR),
+                    old_im_dir=os.path.join(base_dir,file_name),
+                    new_im_dir=os.path.join(base_dir, self.NEW_DATA_DIR, file_name),
                 )
 
                 # remove file extension
-                file_name = self.clean_name(file_name)
+                file_name_no_ext = self.clean_name(file_name)
 
                 # use the MRCNN model, identify individual apples/pear on trays
                 mask, box = self.create_fullmask_image(
                     model=model,
                     im=img,
-                    fname=file_name.replace(
-                        self.OLD_DATA_DIR, self.FULLMASK_DIR)
+                    fname=os.path.join(base_dir, self.FULLMASK_DIR,file_name_no_ext)
                 )
 
                 # only take images that have at least 18 instances (18 apples/pears)
@@ -701,7 +747,11 @@ class GRANNY(object):
 
                 # for debugging purpose
                 print(
-                    f"\t- {name} extracted. Check \"results/\" for output. - \n")
+                    f"\t- {base_file} extracted. Check \"results/\" for output. - \n")
+
+            if (self.VERBOSE):
+                print("-" * 40)
+
         except FileNotFoundError:
             print(f"\t- Folder/File Does Not Exist -")
 
@@ -711,10 +761,14 @@ class GRANNY(object):
         """
         # extract each individual instance from the full-tray image
         if self.ACTION == "extract":
+            if (self.VERBOSE):
+                print(f"Extracting Images...")
             self.mask_extract_image()
 
         # (GS) rate each apple
         elif self.ACTION == "rate":
+            if (self.VERBOSE):
+                print("Processing Images...")
             self.rate_binarize_image()
 
         # not a valid action
