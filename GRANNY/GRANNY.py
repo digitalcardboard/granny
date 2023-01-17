@@ -381,7 +381,7 @@ class GRANNY(object):
                                          [3], j]*m[ar[i][0]:ar[i][2], ar[i][1]:ar[i][3]]
 
                 # save the image
-                export_fname = fname + "_" + str(ar[i][-2]) + ".png"
+                export_fname = fname + "_" + "{:02d}".format(ar[i][-2]) + ".png"
                 if (self.VERBOSE):
                     print(f"Extracted {export_fname}")
                 plt.imsave(export_fname, new_im)
@@ -592,10 +592,12 @@ class GRANNY(object):
             return 1
         else:
             fraction = 1 - mask_area/ground_area
+        
+        if (self.VERBOSE): print("Scald at {0:.4%}".format(fraction))
 
         if fraction < 0:
             return 0
-        return round(fraction,6)
+        return fraction
 
     def rate_binarize_image(self):
         """ 
@@ -678,7 +680,7 @@ class GRANNY(object):
                     idx = -file_name[::-1].find(os.sep)
                     if idx != 1:
                         file_name = file_name[idx:]
-                    scores.append(score)
+                    scores.append("{0:.4%}".format(score))
 
                     binarized_fname = os.path.join(
                         self.BINARIZED_IMAGE_DIR, file_name + ".png")
