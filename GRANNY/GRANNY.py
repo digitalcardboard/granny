@@ -13,6 +13,7 @@ import warnings
 import json
 import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = "0" # forcing CUDA off, this should probably be a flag
 pd.options.mode.chained_assignment = None
 tf.autograph.set_verbosity(3)
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -156,7 +157,12 @@ class GrannyExtractInstances(GrannyBaseClass):
         """
         # download the pretrained weights from GitHub if not exist
         if not os.path.exists(self.PRETRAINED_MODEL):
+            if verbose: 
+                print('MCRNN Model does not exist; downloading...')
             config.MRCNN_utils.download_trained_weights(self.PRETRAINED_MODEL)
+        else:
+            if verbose: 
+                print('MCRNN Model previously downloaded.')
 
         # load the configurations for the model
         AppleConfig = config.AppleConfig()
@@ -164,14 +170,18 @@ class GrannyExtractInstances(GrannyBaseClass):
             AppleConfig.display()
 
         # load model
+        if verbose:
+            print('Loading MCRNN model...')
         model = config.MRCNN_model.MaskRCNN(
             mode="inference", model_dir=self.MODEL_DIR, config=AppleConfig)
 
         # load pretrained weights to model
+        if verbose:
+            print('Loading weights into model...')
         model.load_weights(self.PRETRAINED_MODEL, by_name=True)
         return model
 
-    def create_fullmask_image(self, model, im, fname=""):
+    def create_fullmask_image(self, model, im, fname="", verbose=0):
         """ 
                 Identify individual apples using the model 
 
@@ -185,6 +195,9 @@ class GrannyExtractInstances(GrannyBaseClass):
                         (numpy.array) mask: [height, width, num_instances]
                         (numpy.array) box: [num_instance, (y1, x1, y2, x2, class_id)]
         """
+
+        if verbose:
+            print('Detecting instances...')
         # detect image's instances using the model
         results = model.detect([im], verbose=0)
         r = results[0]
@@ -195,6 +208,8 @@ class GrannyExtractInstances(GrannyBaseClass):
         score = r["scores"]
         class_names = ["BG", ""]
 
+        if verbose:
+            print('Creating mask...')
         # display the image with the masks, box, and scores
         config.MRCNN_visualize.display_instances(im, box, mask, r['class_ids'],
                                                  class_names, score)
@@ -204,7 +219,7 @@ class GrannyExtractInstances(GrannyBaseClass):
 
         return mask, box
 
-    def label_instances_helper(self, df):
+    def label_instances_helper(self, df, verbose=0):
         """ 
                 Helper function to sort the 18-apple tray using their center coordinates
 
@@ -218,6 +233,9 @@ class GrannyExtractInstances(GrannyBaseClass):
                 Returns:
                 (list) df_list: sorted coordinates of apples/pears
         """
+
+        if verbose:
+            print("Sorting by y-center...")
         # sort df by y-center coordinates
         df = df.sort_values("ycenter", ascending=True, ignore_index=True)
         df.append(df.iloc[-1])
@@ -257,7 +275,7 @@ class GrannyExtractInstances(GrannyBaseClass):
 
         return df_list
 
-    def sort_instances(self, box):
+    def sort_instances(self, box, verbose=0):
         """ 
                 Sort and identify apples 
                 This sorting algorithm follows the numbering convention in 
@@ -269,15 +287,22 @@ class GrannyExtractInstances(GrannyBaseClass):
                 Returns:
                 (numpy.array) apple_ar: sorted coordinates of apples/pears 
         """
+        if verbose:
+            print("Sorting instances...")
+
+        if verbose:
+            print("Converting to DataFrame...")
         # convert to DataFrame
         df = pd.DataFrame(box)
 
         # label each column
         df.columns = ["y1", "x1", "y2", "x2"]
 
-        # take first 18 rows (18 apples)
+        # take first NUM_INSTANCES rows (apples/pears)
         df = df.iloc[0:self.NUM_INSTANCES]
 
+        if verbose:
+            print("Calculating centers...")
         # calculate centers for each apples
         df["ycenter"] = ((df["y1"]+df["y2"])/2).astype(int)
         df["xcenter"] = ((df["x1"]+df["x2"])/2).astype(int)
@@ -288,12 +313,12 @@ class GrannyExtractInstances(GrannyBaseClass):
         df["nums"] = df.index
 
         # sort the DataFrame and return the list of instances
-        apple_list = self.label_instances_helper(df)
+        apple_list = self.label_instances_helper(df, verbose)
 
         apple_ar = np.asarray(apple_list, dtype=object)
         return apple_ar
 
-    def extract_image(self, sorted_arr, mask, im, fname=""):
+    def extract_image(self, sorted_arr, mask, im, fname="", verbose=0):
         """ 
                 Extract individual image from masks created by Mask-RCNN 
 
@@ -307,7 +332,7 @@ class GrannyExtractInstances(GrannyBaseClass):
                 Returns: 
                         None
         """
-        # loop over 18 apples/pears
+        # loop over total number of apples/pears
         for k, ar in enumerate(sorted_arr):
 
             # loop over the coordinates
@@ -316,7 +341,7 @@ class GrannyExtractInstances(GrannyBaseClass):
                 # make sure ar is np.array
                 ar = np.array(ar)
 
-                # take the corresponsing mask
+                # take the corresponding mask
                 m = mask[:, :, ar[i][-1]]
 
                 # initialize a blank array for the image
@@ -329,7 +354,7 @@ class GrannyExtractInstances(GrannyBaseClass):
                                          [3], j]*m[ar[i][0]:ar[i][2], ar[i][1]:ar[i][3]]
 
                 # save the image
-                plt.imsave(fname + "_" + str(ar[i][-2]) + ".png", new_im)
+                plt.imsave(fname + "_" + str(ar[i][-2]).zfill(2) + ".png", new_im)
     
     def rotate_image(self, old_im_dir, new_im_dir=""):
         """
@@ -356,7 +381,7 @@ class GrannyExtractInstances(GrannyBaseClass):
                 Output directory: 'segmented_data' and 'full_masked_data'
                         'segmented_data/': contains extracted images of individual apples
                         'full_masked_data/': contains masked images of apple trays
-                Time: ~ 4-5 minutes per	 full-tray image	
+                Time: ~ 4-5 minutes per	full-tray image	
 
                 Args: 
                         None
@@ -402,13 +427,17 @@ class GrannyExtractInstances(GrannyBaseClass):
                     model=model,
                     im=img,
                     fname=file_name.replace(
-                        self.OLD_DATA_DIR, self.FULLMASK_DIR)
+                        self.OLD_DATA_DIR, self.FULLMASK_DIR),
+                    verbose=self.VERBOSE
                 )
+
+                if self.VERBOSE:
+                    print(f"{len(box)} instances is/are detected.")
 
                 # if there are more instances than NUM_INSTANCES
                 if self.NUM_INSTANCES > len(box):
                     print(
-                        f"Only {len(box)} instances is detected.")
+                        f"Only {len(box)} instances is/are detected.")
                     box = box
 
                 # if there are less instances than NUM_INSTANCES
@@ -416,11 +445,12 @@ class GrannyExtractInstances(GrannyBaseClass):
                     box = box[0:self.NUM_INSTANCES, :]
 
                 # sort all instances using the convention in demo/18_apples_tray_convention.pdf
-                sorted_ar = self.sort_instances(box)
+                sorted_ar = self.sort_instances(box, self.VERBOSE)
 
                 # extract the images
                 self.extract_image(sorted_arr=sorted_ar, mask=mask, im=img, fname=file_name.replace(
-                    self.OLD_DATA_DIR, self.SEGMENTED_DIR))
+                    self.OLD_DATA_DIR, self.SEGMENTED_DIR,
+                    self.VERBOSE))
 
                 # for debugging purpose
                 print(
