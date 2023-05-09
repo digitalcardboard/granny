@@ -13,7 +13,6 @@ import warnings
 import json
 import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['CUDA_VISIBLE_DEVICES'] = "0" # forcing CUDA off, this should probably be a flag
 pd.options.mode.chained_assignment = None
 tf.autograph.set_verbosity(3)
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -332,8 +331,14 @@ class GrannyExtractInstances(GrannyBaseClass):
                 Returns: 
                         None
         """
+        # reference sort_instances function for more clarity on sorted_arr and ar below
+
+        im_annotated = im.copy()
+
         # loop over total number of apples/pears
         for k, ar in enumerate(sorted_arr):
+            if verbose:
+                print(f"Extracting images from row {k}...")
 
             # loop over the coordinates
             for i in range(0, len(ar)):
@@ -353,8 +358,28 @@ class GrannyExtractInstances(GrannyBaseClass):
                     new_im[:, :, j] = im[ar[i][0]:ar[i][2], ar[i][1]:ar[i]
                                          [3], j]*m[ar[i][0]:ar[i][2], ar[i][1]:ar[i][3]]
 
+                # annotate im
+                cv2.putText(
+                    img = im_annotated,
+                    text = str(ar[i][-2]).zfill(2),
+                    org = (ar[i][5],ar[i][4]), 
+                    fontFace = 0, 
+                    fontScale = 5, 
+                    color = (100,100,100), 
+                    thickness = 20
+                )
+
                 # save the image
-                plt.imsave(fname + "_" + str(ar[i][-2]).zfill(2) + ".png", new_im)
+                save_fname = fname + "_" + str(ar[i][-2]).zfill(2) + ".png" 
+                if verbose:
+                    print(f"Saving image {ar[i][-2]} as {save_fname}...")
+                plt.imsave(save_fname, new_im)
+
+        if verbose:
+            im_screen = cv2.resize(im_annotated, (2048, 1536))
+            cv2.imshow('test', im_screen)
+            cv2.waitKey(0)
+        return im_annotated
     
     def rotate_image(self, old_im_dir, new_im_dir=""):
         """
@@ -447,10 +472,14 @@ class GrannyExtractInstances(GrannyBaseClass):
                 # sort all instances using the convention in demo/18_apples_tray_convention.pdf
                 sorted_ar = self.sort_instances(box, self.VERBOSE)
 
-                # extract the images
-                self.extract_image(sorted_arr=sorted_ar, mask=mask, im=img, fname=file_name.replace(
-                    self.OLD_DATA_DIR, self.SEGMENTED_DIR,
-                    self.VERBOSE))
+                # extract the images, return annotated image
+                im_annotated = self.extract_image(sorted_arr=sorted_ar, mask=mask, im=img, fname=file_name.replace(
+                    self.OLD_DATA_DIR, self.SEGMENTED_DIR),
+                    verbose=self.VERBOSE)
+
+                # write annotated file 
+                annotated_fname = file_name.replace(self.OLD_DATA_DIR, self.FULLMASK_DIR)
+                cv2.imwrite(os.path.join(annotated_fname + "_annotated.png"), im_annotated)
 
                 # for debugging purpose
                 print(
