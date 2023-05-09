@@ -43,6 +43,7 @@ class GrannyBaseClass(object):
             ".PNG", ".PNG".lower(),
             ".JPEG", ".JPEG".lower(),
             ".TIFF", ".TIFF".lower(),
+            ".TIF", ".TIF".lower(),
         )
 
         # initialize default parameters
@@ -253,7 +254,7 @@ class GrannyExtractInstances(GrannyBaseClass):
         df_list = []
         if len(df[df["rows"] == 1]) == 5:
             apple_id = self.NUM_INSTANCES
-            for i in range(1, 5):
+            for i in range(1, self.NUM_INSTANCES // 5):
                 dfx = df[df["rows"] == i].sort_values(
                     "xcenter", ascending=False, inplace=False, ignore_index=True)
                 for id in range(0, len(dfx)):
@@ -262,9 +263,10 @@ class GrannyExtractInstances(GrannyBaseClass):
                 df_list.append(dfx)
 
         # if the first row has 4 apples/pears
+        # or any other configuration
         else:
             apple_id = 1
-            for i in range(1, 5):
+            for i in range(1, self.NUM_INSTANCES // 5):
                 dfx = df[df["rows"] == i].sort_values(
                     "xcenter", ascending=False, inplace=False, ignore_index=True)
                 for id in range(0, len(dfx)):
@@ -365,7 +367,7 @@ class GrannyExtractInstances(GrannyBaseClass):
                     org = (ar[i][5],ar[i][4]), 
                     fontFace = 0, 
                     fontScale = 5, 
-                    color = (100,100,100), 
+                    color = (127,127,127), 
                     thickness = 20
                 )
 

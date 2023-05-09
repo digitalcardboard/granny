@@ -10,10 +10,10 @@ def main():
     parser.add_argument("-a", "--action", dest = "action", type = str, nargs = "?", 
     required = True, help = "Required. Specify an action to perform.")
 
-    parser.add_argument("-d", "--image_dir", dest = "dir", type = str, nargs = "?", 
+    parser.add_argument("-d", "--image_dir", "--image-dir", dest = "dir", type = str, nargs = "?", 
     required = True, help = "Required. Specify a directory or a file.")
 
-    parser.add_argument("-n", "--num_instances", dest = "num_instances", type = int, nargs = "?", 
+    parser.add_argument("-n", "--num_instances", "--num-instances", dest = "num_instances", type = int, nargs = "?", 
     required = False, help = "Optional, default is 18. The number of instances on each image.")
 
     parser.add_argument("-v", "--verbose", dest = "verbose", type = int, nargs = "?", 
